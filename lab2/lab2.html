@@ -1,51 +1,103 @@
 <!DOCTYPE html>
-<html>
+<html lang="uk">
 <head>
     <meta charset="UTF-8">
-    <title>Наївний баєсів класифікатор</title>
+    <title>Класифікатор речень (Senseval)</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 40px auto; padding: 20px; line-height: 1.6; background-color: #f9f9f9; color: #333; }
+        h1 { text-align: center; color: #1a1a1a; }
+        textarea { width: 100%; font-size: 16px; padding: 10px; border-radius: 5px; border: 1px solid #ccc; margin-top: 10px; box-sizing: border-box; }
+        button { display: block; width: 100%; padding: 12px; font-size: 18px; color: white; background-color: #007bff; border: none; border-radius: 5px; cursor: pointer; margin-top: 15px; }
+        button:hover { background-color: #0056b3; }
+        #result { font-size: 20px; font-weight: bold; text-align: center; margin-top: 25px; padding: 15px; border-radius: 5px; }
+        .result-hard { background-color: #ffebee; color: #c62828; }
+        .result-interest { background-color: #e8f5e9; color: #2e7d32; }
+    </style>
 </head>
 <body>
-    <h1>Наївний баєсів класифікатор </h1>
-    <textarea id="tweetInput" rows="4" cols="50"></textarea><br>
-    <button onclick="classifyTweet()">Визначити тональність</button>
+
+    <h1>Класифікатор речень</h1>
+    <p>Введіть речення англійською, і модель спробує визначити, чи стосується воно контексту слова 'hard' чи 'interest'.</p>
+    
+    <textarea id="textInput" rows="4" placeholder="e.g., This is a very hard task..."></textarea>
+    <button onclick="classifyText()">Класифікувати</button>
+    
     <p id="result"></p>
 
-    <script type="text/javascript">
-        let logprior;
-        let loglikelihood;
-        
-        // Завантажити навчену модель із файлу JSON
-        fetch('naive_bayes_model.json')
+    <script>
+        // --- 1. Завантаження моделі ---
+        let model = {};
+        fetch('model.json')
             .then(response => response.json())
             .then(data => {
-                logprior = data.logprior;
-                loglikelihood = data.loglikelihood;
-            });
+                model.logprior = data.logprior;
+                model.loglikelihood = data.loglikelihood;
+                console.log("Модель успішно завантажено.");
+            })
+            .catch(error => console.error("Помилка завантаження моделі:", error));
+
+        // --- 2. Попередня обробка тексту на JavaScript ---
+
+        // Реалізація стеммера Портера на JS (щоб відповідати Python)
+        const stemmer = (function(){var e={ational:"ate",tional:"tion",enci:"ence",anci:"ance",izer:"ize",bli:"ble",alli:"al",entli:"ent",eli:"e",ousli:"ous",ization:"ize",ation:"ate",ator:"ate",alism:"al",iveness:"ive",fulness:"ful",ousness:"ous",aliti:"al",iviti:"ive",biliti:"ble",logi:"log"},t={icate:"ic",ative:"",alize:"al",iciti:"ic",ical:"ic",ful:"",ness:""},i=/^([aeiouy])?([^aeiouy]*)?([aeiouy][^aeiouy]*)?([aeiouy])?(.+)?$/,r=/^([aeiouy]*)?([^aeiouy]+)([aeiouy].*)?$/,s=/^([aeiouy]*)?([^aeiouy]+[aeiouy]+)([^aeiouy].*)?$/,n=/[aeiouy]/,o=/[wxy]$/,a=/^(s|ss|i|i?us|e|e?s|e?d|e?ing)$/,l=/ed$|ing$/,h=/(at|bl|iz)$/,c=/([^aeiouylsz])\1$/,u=new RegExp("^([^aeiouy]*)?[aeiouy]"),d=new RegExp("^(.*[^aeiouy])(..)$");function g(e){var t;if(e.length<3)return e;if(t=d.exec(e))if(h.test(t[1]))return e.substring(0,e.length-1);if(c.test(e))return e.substring(0,e.length-1);return e}return function(h){var c,d,p,f,m,v,y;if(h.length<3)return h;if(y=i.exec(h.toLowerCase()),y&&(c=y[1]||"",d=y[2]||"",p=y[3]||"",f=y[5]||"",v=c+d,m=p+f),a.test(m))m=m.replace(/sses$/,"ss").replace(/ies$/,"i").replace(/ss$/,"ss").replace(/s$/,"");else if(l.test(m))m=(m=m.replace(/ed$/,"").replace(/ing$/,""))&&(m=g(m));if((p=s.exec(m))&&p[2].length>1&&t.hasOwnProperty(m.substring(p[2].length)))m=m.substring(0,p[2].length)+t[m.substring(p[2].length)];if(m=m.replace(/y$/,"i"),(p=r.exec(m))&&p[2].length>1&&e.hasOwnProperty(m.substring(p[2].length)))m=m.substring(0,p[2].length)+e[m.substring(p[2].length)];if((p=s.exec(m))&&p[2].length>1)m=m.substring(0,p[2].length);return(p=s.exec(m))&&p[2].length>1&&n.test(p[1])&&o.test(m)||s.test(m)&&m.length>4?m.substring(0,m.length-1):m}})();
         
-        // Опрацювання повідомлення
-        function processTweet(tweet) {
-            // Тут явно варто її покращити
-            return tweet.toLowerCase().split(' ');
+        const stopWords = new Set(['i', 'me', 'my', 'myself', 'we', 'our', 'ours', 'ourselves', 'you', 'your', 'yours', 'yourself', 'yourselves', 'he', 'him', 'his', 'himself', 'she', 'her', 'hers', 'herself', 'it', 'its', 'itself', 'they', 'them', 'their', 'theirs', 'themselves', 'what', 'which', 'who', 'whom', 'this', 'that', 'these', 'those', 'am', 'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had', 'having', 'do', 'does', 'did', 'doing', 'a', 'an', 'the', 'and', 'but', 'if', 'or', 'because', 'as', 'until', 'while', 'of', 'at', 'by', 'for', 'with', 'about', 'against', 'between', 'into', 'through', 'during', 'before', 'after', 'above', 'below', 'to', 'from', 'up', 'down', 'in', 'out', 'on', 'off', 'over', 'under', 'again', 'further', 'then', 'once', 'here', 'there', 'when', 'where', 'why', 'how', 'all', 'any', 'both', 'each', 'few', 'more', 'most', 'other', 'some', 'such', 'no', 'nor', 'not', 'only', 'own', 'same', 'so', 'than', 'too', 'very', 's', 't', 'can', 'will', 'just', 'don', 'should', 'now']);
+
+        function processText(text) {
+            // 1. Токенізація і нижній регістр
+            const tokens = text.toLowerCase().split(/\s+/);
+            const cleanedTokens = [];
+
+            for (const token of tokens) {
+                // 2. Видалення пунктуації і не-слів
+                const cleanToken = token.replace(/[^a-z]/g, '');
+                // 3. Видалення стоп-слів
+                if (cleanToken && !stopWords.has(cleanToken)) {
+                    // 4. Стеммінг
+                    const stemmedToken = stemmer(cleanToken);
+                    cleanedTokens.push(stemmedToken);
+                }
+            }
+            return cleanedTokens;
         }
         
-        // Наївний баєсів класифікатор
-        function naiveBayesPredict(tweet, logprior, loglikelihood) {
-            const words = processTweet(tweet);
+        // --- 3. Логіка Наївного Баєса ---
+        function naiveBayesPredict(textTokens, logprior, loglikelihood) {
             let p = logprior;
-            for (const word of words) {
+            for (const word of textTokens) {
                 if (word in loglikelihood) {
                     p += loglikelihood[word];
                 }
             }
             return p;
         }
-        
-        function classifyTweet() {
-            const tweet = document.getElementById('tweetInput').value;
-            const prediction = naiveBayesPredict(tweet, logprior, loglikelihood);
-            const sentiment = prediction > 0 ? 'позитивна' : 'негативна';
-            document.getElementById('result').textContent = `Визначена тональність: ${sentiment}`;
+
+        // --- 4. Функція-обробник події ---
+        function classifyText() {
+            const text = document.getElementById('textInput').value;
+            if (!text) {
+                alert("Будь ласка, введіть текст для аналізу.");
+                return;
+            }
+            if (!model.logprior) {
+                alert("Модель ще не завантажена. Зачекайте, будь ласка.");
+                return;
+            }
+
+            // Виконуємо весь ланцюжок
+            const processedTokens = processText(text);
+            const predictionScore = naiveBayesPredict(processedTokens, model.logprior, model.loglikelihood);
+
+            const resultElement = document.getElementById('result');
+            if (predictionScore > 0) {
+                resultElement.textContent = "Прогноз: речення стосується 'interest'";
+                resultElement.className = 'result-interest';
+            } else {
+                resultElement.textContent = "Прогноз: речення стосується 'hard'";
+                resultElement.className = 'result-hard';
+            }
         }
     </script>
+
 </body>
 </html>
